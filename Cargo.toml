@@ -2,6 +2,8 @@
 name = "nmos_6502"
 version = "0.1.0"
 edition = "2024"
+description = "A NMOS 6502 CPU emulator (WIP)"
+license = "MIT"
 
 [features]
 default = []
