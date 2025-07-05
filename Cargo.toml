@@ -3,6 +3,7 @@ name = "nmos_6502"
 version = "0.1.0"
 license = "MIT"
 edition = "2024"
+readme = "README.md"
 description = "A NMOS 6502 CPU emulator (WIP)"
 repository = "https://github.com/cainthebest/nmos_6502"
 authors = ["cainthebest <https://github.com/cainthebest>"]
