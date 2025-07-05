@@ -129,17 +129,17 @@ impl CentralProcessingUnit {
     }
 
     const fn zeropage_x(&mut self) -> u16 {
-        let base = self.read_byte(self.pc);
+        let addr = self.read_byte(self.pc);
         self.pc = self.pc.wrapping_add(1);
 
-        base.wrapping_add(self.x) as u16
+        addr.wrapping_add(self.x) as u16
     }
 
     const fn zeropage_y(&mut self) -> u16 {
-        let base = self.read_byte(self.pc);
+        let addr = self.read_byte(self.pc);
         self.pc = self.pc.wrapping_add(1);
 
-        base.wrapping_add(self.y) as u16
+        addr.wrapping_add(self.y) as u16
     }
 
     const fn absolute(&mut self) -> u16 {
@@ -149,57 +149,42 @@ impl CentralProcessingUnit {
         addr
     }
 
-    const fn absolute_x(&mut self) -> (u16, bool) {
-        let base = self.read_word(self.pc);
+    const fn absolute_x(&mut self) -> u16 {
+        let addr = self.read_word(self.pc);
         self.pc = self.pc.wrapping_add(2);
-        let addr = base.wrapping_add(self.x as u16);
-        let page_crossed = (base & 0xFF00) != (addr & 0xFF00);
 
-        (addr, page_crossed)
+        addr.wrapping_add(self.x as u16)
     }
 
-    const fn absolute_y(&mut self) -> (u16, bool) {
-        let base = self.read_word(self.pc);
+    const fn absolute_y(&mut self) -> u16 {
+        let addr = self.read_word(self.pc);
         self.pc = self.pc.wrapping_add(2);
-        let addr = base.wrapping_add(self.y as u16);
-        let page_crossed = (base & 0xFF00) != (addr & 0xFF00);
 
-        (addr, page_crossed)
+        addr.wrapping_add(self.y as u16)
     }
 
     const fn indirect(&mut self) -> u16 {
-        let ptr = self.read_word(self.pc);
+        let addr = self.read_word(self.pc);
         self.pc = self.pc.wrapping_add(2);
-        let lo = self.read_byte(ptr) as u16;
-        let hi = self.read_byte(if (ptr & 0x00FF) == 0x00FF {
-            // I believe this is the correct behavior for the 6502 bug.
-            ptr & 0xFF00
-        } else {
-            ptr.wrapping_add(1)
-        }) as u16;
 
-        (hi << 8) | lo
+        // I believe this is the correct behavior for the 6502 hardware bug.
+        (self.read_byte((addr & 0xFF00) | ((addr.wrapping_add(1)) & 0xFF)) as u16) << 8
+            | (self.read_byte(addr) as u16)
     }
 
     const fn indexed_indirect(&mut self) -> u16 {
-        let zp = self.read_byte(self.pc);
+        let addr = self.read_byte(self.pc).wrapping_add(self.x) as u16;
         self.pc = self.pc.wrapping_add(1);
-        let ptr = zp.wrapping_add(self.x);
-        let lo = self.read_byte(ptr as u16) as u16;
-        let hi = self.read_byte(ptr.wrapping_add(1) as u16) as u16;
 
-        (hi << 8) | lo
+        ((self.read_byte(addr.wrapping_add(1)) as u16) << 8) | (self.read_byte(addr) as u16)
     }
 
-    const fn indirect_indexed(&mut self) -> (u16, bool) {
-        let zp = self.read_byte(self.pc);
+    const fn indirect_indexed(&mut self) -> u16 {
+        let addr = self.read_byte(self.pc) as u16;
         self.pc = self.pc.wrapping_add(1);
-        let lo = self.read_byte(zp as u16) as u16;
-        let hi = self.read_byte(zp.wrapping_add(1) as u16) as u16;
-        let base = (hi << 8) | lo;
-        let addr = base.wrapping_add(self.y as u16);
-        let page_crossed = (base & 0xFF00) != (addr & 0xFF00);
-        (addr, page_crossed)
+
+        (((self.read_byte(addr.wrapping_add(1)) as u16) << 8) | (self.read_byte(addr) as u16))
+            .wrapping_add(self.y as u16)
     }
 }
 
@@ -445,16 +430,10 @@ impl CentralProcessingUnit {
             }
 
             // JMP abs
-            0x4C => {
-                let addr = self.absolute();
-                self.pc = addr;
-            }
+            0x4C => self.pc = self.absolute(),
 
             // JMP ind
-            0x6C => {
-                let addr = self.indirect();
-                self.pc = addr;
-            }
+            0x6C => self.pc = self.indirect(),
 
             // BPL
             0x10 => self.branch(!self.get_flag(Self::STATUS_FLAG_N)),
@@ -505,6 +484,7 @@ impl CentralProcessingUnit {
             0x09 => {
                 let addr = self.immediate();
                 let v = self.read_byte(addr);
+
                 self.ora(v)
             }
 
@@ -512,6 +492,7 @@ impl CentralProcessingUnit {
             0x05 => {
                 let addr = self.zeropage();
                 let v = self.read_byte(addr);
+
                 self.ora(v)
             }
 
@@ -519,6 +500,7 @@ impl CentralProcessingUnit {
             0x15 => {
                 let addr = self.zeropage_x();
                 let v = self.read_byte(addr);
+
                 self.ora(v)
             }
 
@@ -526,20 +508,23 @@ impl CentralProcessingUnit {
             0x0D => {
                 let addr = self.absolute();
                 let v = self.read_byte(addr);
+
                 self.ora(v)
             }
 
             // ORA abs,X
             0x1D => {
-                let (a, _) = self.absolute_x();
-                let v = self.read_byte(a);
+                let addr = self.absolute_x();
+                let v = self.read_byte(addr);
+
                 self.ora(v)
             }
 
             // ORA abs,Y
             0x19 => {
-                let (a, _) = self.absolute_y();
-                let v = self.read_byte(a);
+                let addr = self.absolute_y();
+                let v = self.read_byte(addr);
+
                 self.ora(v)
             }
 
@@ -552,8 +537,8 @@ impl CentralProcessingUnit {
 
             // ORA (zp),Y
             0x11 => {
-                let (a, _) = self.indirect_indexed();
-                let v = self.read_byte(a);
+                let addr = self.indirect_indexed();
+                let v = self.read_byte(addr);
                 self.ora(v)
             }
 
@@ -587,15 +572,15 @@ impl CentralProcessingUnit {
 
             // AND abs,X
             0x3D => {
-                let (a, _) = self.absolute_x();
-                let v = self.read_byte(a);
+                let addr = self.absolute_x();
+                let v = self.read_byte(addr);
                 self.and(v)
             }
 
             // AND abs,Y
             0x39 => {
-                let (a, _) = self.absolute_y();
-                let v = self.read_byte(a);
+                let addr = self.absolute_y();
+                let v = self.read_byte(addr);
                 self.and(v)
             }
 
@@ -608,8 +593,8 @@ impl CentralProcessingUnit {
 
             // AND (zp),Y
             0x31 => {
-                let (a, _) = self.indirect_indexed();
-                let v = self.read_byte(a);
+                let addr = self.indirect_indexed();
+                let v = self.read_byte(addr);
                 self.and(v)
             }
 
@@ -643,15 +628,15 @@ impl CentralProcessingUnit {
 
             // EOR abs,X
             0x5D => {
-                let (a, _) = self.absolute_x();
-                let v = self.read_byte(a);
+                let addr = self.absolute_x();
+                let v = self.read_byte(addr);
                 self.eor(v)
             }
 
             // EOR abs,Y
             0x59 => {
-                let (a, _) = self.absolute_y();
-                let v = self.read_byte(a);
+                let addr = self.absolute_y();
+                let v = self.read_byte(addr);
                 self.eor(v)
             }
 
@@ -664,8 +649,8 @@ impl CentralProcessingUnit {
 
             // EOR (zp),Y
             0x51 => {
-                let (a, _) = self.indirect_indexed();
-                let v = self.read_byte(a);
+                let addr = self.indirect_indexed();
+                let v = self.read_byte(addr);
                 self.eor(v)
             }
 
@@ -713,15 +698,15 @@ impl CentralProcessingUnit {
 
             // ADC abs,X
             0x7D => {
-                let (a, _) = self.absolute_x();
-                let v = self.read_byte(a);
+                let addr = self.absolute_x();
+                let v = self.read_byte(addr);
                 self.adc(v)
             }
 
             // ADC abs,Y
             0x79 => {
-                let (a, _) = self.absolute_y();
-                let v = self.read_byte(a);
+                let addr = self.absolute_y();
+                let v = self.read_byte(addr);
                 self.adc(v)
             }
 
@@ -734,8 +719,8 @@ impl CentralProcessingUnit {
 
             // ADC (zp),Y
             0x71 => {
-                let (a, _) = self.indirect_indexed();
-                let v = self.read_byte(a);
+                let addr = self.indirect_indexed();
+                let v = self.read_byte(addr);
                 self.adc(v)
             }
 
@@ -769,15 +754,15 @@ impl CentralProcessingUnit {
 
             // SBC abs,X
             0xFD => {
-                let (a, _) = self.absolute_x();
-                let v = self.read_byte(a);
+                let addr = self.absolute_x();
+                let v = self.read_byte(addr);
                 self.sbc(v)
             }
 
             // SBC abs,Y
             0xF9 => {
-                let (a, _) = self.absolute_y();
-                let v = self.read_byte(a);
+                let addr = self.absolute_y();
+                let v = self.read_byte(addr);
                 self.sbc(v)
             }
 
@@ -790,8 +775,8 @@ impl CentralProcessingUnit {
 
             // SBC (zp),Y
             0xF1 => {
-                let (a, _) = self.indirect_indexed();
-                let v = self.read_byte(a);
+                let addr = self.indirect_indexed();
+                let v = self.read_byte(addr);
                 self.sbc(v)
             }
 
@@ -815,8 +800,8 @@ impl CentralProcessingUnit {
 
             // INC abs,X
             0xFE => {
-                let (a, _) = self.absolute_x();
-                self.inc(a)
+                let addr = self.absolute_x();
+                self.inc(addr)
             }
 
             // DEC zp
@@ -839,8 +824,8 @@ impl CentralProcessingUnit {
 
             // DEC abs,X
             0xDE => {
-                let (a, _) = self.absolute_x();
-                self.dec(a)
+                let addr = self.absolute_x();
+                self.dec(addr)
             }
 
             // CMP #imm
@@ -869,14 +854,14 @@ impl CentralProcessingUnit {
 
             // CMP abs,X
             0xDD => {
-                let (a, _) = self.absolute_x();
-                self.cmp(self.a, self.read_byte(a))
+                let addr = self.absolute_x();
+                self.cmp(self.a, self.read_byte(addr))
             }
 
             // CMP abs,Y
             0xD9 => {
-                let (a, _) = self.absolute_y();
-                self.cmp(self.a, self.read_byte(a))
+                let addr = self.absolute_y();
+                self.cmp(self.a, self.read_byte(addr))
             }
 
             // CMP (zp,X)
@@ -887,8 +872,8 @@ impl CentralProcessingUnit {
 
             // CMP (zp),Y
             0xD1 => {
-                let (a, _) = self.indirect_indexed();
-                self.cmp(self.a, self.read_byte(a))
+                let addr = self.indirect_indexed();
+                self.cmp(self.a, self.read_byte(addr))
             }
 
             // CPX #imm
@@ -961,16 +946,16 @@ impl CentralProcessingUnit {
 
             // LDA abs,X
             0xBD => {
-                let (a, _) = self.absolute_x();
-                let v = self.read_byte(a);
+                let addr = self.absolute_x();
+                let v = self.read_byte(addr);
                 self.a = v;
                 self.update_zn(v)
             }
 
             // LDA abs,Y
             0xB9 => {
-                let (a, _) = self.absolute_y();
-                let v = self.read_byte(a);
+                let addr = self.absolute_y();
+                let v = self.read_byte(addr);
                 self.a = v;
                 self.update_zn(v)
             }
@@ -985,8 +970,8 @@ impl CentralProcessingUnit {
 
             // LDA (zp),Y
             0xB1 => {
-                let (a, _) = self.indirect_indexed();
-                let v = self.read_byte(a);
+                let addr = self.indirect_indexed();
+                let v = self.read_byte(addr);
                 self.a = v;
                 self.update_zn(v)
             }
@@ -1025,8 +1010,8 @@ impl CentralProcessingUnit {
 
             // LDX abs,Y
             0xBE => {
-                let (a, _) = self.absolute_y();
-                let v = self.read_byte(a);
+                let addr = self.absolute_y();
+                let v = self.read_byte(addr);
                 self.x = v;
                 self.update_zn(v)
             }
@@ -1065,8 +1050,8 @@ impl CentralProcessingUnit {
 
             // LDY abs,X
             0xBC => {
-                let (a, _) = self.absolute_x();
-                let v = self.read_byte(a);
+                let addr = self.absolute_x();
+                let v = self.read_byte(addr);
                 self.y = v;
                 self.update_zn(v)
             }
@@ -1091,14 +1076,14 @@ impl CentralProcessingUnit {
 
             // STA abs,X
             0x9D => {
-                let (a, _) = self.absolute_x();
-                self.write_byte(a, self.a)
+                let addr = self.absolute_x();
+                self.write_byte(addr, self.a)
             }
 
             // STA abs,Y
             0x99 => {
-                let (a, _) = self.absolute_y();
-                self.write_byte(a, self.a)
+                let addr = self.absolute_y();
+                self.write_byte(addr, self.a)
             }
 
             // STA (zp,X)
@@ -1109,8 +1094,8 @@ impl CentralProcessingUnit {
 
             // STA (zp),Y
             0x91 => {
-                let (a, _) = self.indirect_indexed();
-                self.write_byte(a, self.a)
+                let addr = self.indirect_indexed();
+                self.write_byte(addr, self.a)
             }
 
             // STX zp
@@ -1224,8 +1209,8 @@ impl CentralProcessingUnit {
 
             // ASL abs,X
             0x1E => {
-                let (a, _) = self.absolute_x();
-                self.asl_mem(a)
+                let addr = self.absolute_x();
+                self.asl_mem(addr)
             }
 
             // LSR A
@@ -1251,8 +1236,8 @@ impl CentralProcessingUnit {
 
             // LSR abs,X
             0x5E => {
-                let (a, _) = self.absolute_x();
-                self.lsr_mem(a)
+                let addr = self.absolute_x();
+                self.lsr_mem(addr)
             }
 
             // ROL A
@@ -1278,8 +1263,8 @@ impl CentralProcessingUnit {
 
             // ROL abs,X
             0x3E => {
-                let (a, _) = self.absolute_x();
-                self.rol_mem(a)
+                let addr = self.absolute_x();
+                self.rol_mem(addr)
             }
 
             // ROR A
@@ -1305,8 +1290,8 @@ impl CentralProcessingUnit {
 
             // ROR abs,X
             0x7E => {
-                let (a, _) = self.absolute_x();
-                self.ror_mem(a)
+                let addr = self.absolute_x();
+                self.ror_mem(addr)
             }
 
             // NOP
