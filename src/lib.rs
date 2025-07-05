@@ -95,11 +95,7 @@ impl CentralProcessingUnit {
 
     #[inline(always)]
     const fn set_flag(&mut self, flag: u8, state: bool) {
-        if state {
-            self.status |= flag;
-        } else {
-            self.status &= !flag;
-        }
+        self.status ^= (self.status ^ (-(state as i8) as u8)) & flag;
     }
 
     #[inline(always)]
@@ -109,8 +105,10 @@ impl CentralProcessingUnit {
 
     #[inline(always)]
     const fn update_zn(&mut self, result: u8) {
-        self.set_flag(Self::STATUS_FLAG_Z, result == 0);
-        self.set_flag(Self::STATUS_FLAG_N, result & 0x80 != 0);
+        self.status ^= (self.status
+            ^ ((-((result == 0) as i8) as u8) & Self::STATUS_FLAG_Z
+                | (-(((result & 0x80) != 0) as i8) as u8) & Self::STATUS_FLAG_N))
+            & (Self::STATUS_FLAG_Z | Self::STATUS_FLAG_N);
     }
 }
 
