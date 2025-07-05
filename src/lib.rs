@@ -188,25 +188,21 @@ impl CentralProcessingUnit {
 // Arithmetic & Logic Instructions
 impl CentralProcessingUnit {
     const fn adc(&mut self, value: u8) {
-        let carry_in = if self.get_flag(Self::STATUS_FLAG_C) {
-            1
-        } else {
-            0
-        };
-        let sum = self.a as u16 + value as u16 + carry_in as u16;
+        let sum = self.a as u16 + value as u16 + (self.status & Self::STATUS_FLAG_C) as u16;
         let mut result = sum as u8;
 
         if self.get_flag(Self::STATUS_FLAG_D) {
-            let lo_adj = ((sum as u8 & 0x0F) > 9) as u8 * 0x06;
-            let hi_adj = (sum > 0x99) as u8 * 0x60;
-            result = result.wrapping_add(lo_adj + hi_adj);
+            result =
+                result.wrapping_add(((result & 0x0F) > 9) as u8 * 0x06 + (sum > 0x99) as u8 * 0x60);
 
             self.set_flag(Self::STATUS_FLAG_C, sum > 0x99);
             self.set_flag(Self::STATUS_FLAG_V, false);
         } else {
             self.set_flag(Self::STATUS_FLAG_C, sum > 0xFF);
-            let overflow = (!(self.a ^ value) & (self.a ^ result) & 0x80) != 0;
-            self.set_flag(Self::STATUS_FLAG_V, overflow);
+            self.set_flag(
+                Self::STATUS_FLAG_V,
+                (!(self.a ^ value) & (self.a ^ result) & 0x80) != 0,
+            );
         }
 
         self.a = result;
