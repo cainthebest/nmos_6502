@@ -1,9 +1,21 @@
 [package]
 name = "nmos_6502"
 version = "0.1.0"
+license = "MIT"
 edition = "2024"
 description = "A NMOS 6502 CPU emulator (WIP)"
-license = "MIT"
+repository = "https://github.com/cainthebest/nmos_6502"
+authors = ["cainthebest <https://github.com/cainthebest>"]
+
 
 [features]
 default = []
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+overflow-checks = false
