@@ -1,6 +1,6 @@
 [package]
 name = "nmos_6502"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 edition = "2024"
 readme = "README.md"
